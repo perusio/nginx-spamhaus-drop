@@ -15,7 +15,7 @@ EDROP_URI=http://www.spamhaus.org/drop/edrop.txt
 EDROP_FILENAME=$(basename $EDROP_URI)
 
 function print_usage() {
-    echo "Usage: $SCRIPTNAME <output file>"
+    echo "Usage: $SCRIPTNAME [output file]"
 }
 
 ## Get the drop list using cURL.
@@ -70,29 +70,40 @@ function print_added_lines() {
 }
 
 ## Check the number of arguments.
-if [ $# -ne 1 ]; then
+if [ $# -gt 1 ]; then
     print_usage
     exit 1
 fi
 
+## Get the output filename.
+OUTPUT_FILE=${1-/etc/nginx/drop_list.conf}
+WRITTEN_FILE="no"
+
 ## If the file doesn't exist create it and process the lists.
-if [ ! -f $1 ]; then
-    process_lists $1 $DROP_FILENAME $DROP_URI
+if [ ! -f $OUTPUT_FILE ]; then
+    process_lists $OUTPUT_FILE $DROP_FILENAME $DROP_URI
     print_added_lines $DROP_FILENAME
-    process_lists $1 $EDROP_FILENAME $EDROP_URI "append"
+    process_lists $OUTPUT_FILE $EDROP_FILENAME $EDROP_URI "append"
     print_added_lines $EDROP_FILENAME
+    WRITTEN_FILE="yes"
 fi
 
 ## Grab the drop files if the Expire date of the current list has
 ## passed already.
 if [ "$(get_list_expire_date $DROP_FILENAME)" -lt "$(date '+%s')" ]; then
-    process_lists $1 $DROP_FILENAME $DROP_URI
+    process_lists $OUTPUT_FILE $DROP_FILENAME $DROP_URI
     print_added_lines $DROP_FILENAME
-
+    WRITTEN_FILE="yes"
 fi
 
 ## Ditto for the extended drop list.
 if [ "$(get_list_expire_date $EDROP_FILENAME)" -lt "$(date '+%s')" ]; then
-    process_lists $1 $EDROP_FILENAME $EDROP_URI "append"
+    process_lists $OUTPUT_FILE $EDROP_FILENAME $EDROP_URI "append"
     print_added_lines $EDROP_FILENAME
+    WRITTEN_FILE="yes"
+fi
+
+## Write a message about the writing of the file.
+if [ "$WRITTEN_FILE" = "yes" ]; then
+    echo "File $OUTPUT_FILE written."
 fi
