@@ -1,0 +1,98 @@
+#!/bin/bash
+
+### Simple shell script to create a list of IPs suitable for the Nginx
+### geo module http://nginx.org/en/docs/http/ngx_http_geo_module.html
+### based on the Spamhaus DROP and EDROP lists. See
+### http://www.spamhaus.org/drop.
+
+SCRIPTNAME=${0##*/}
+CURL=$(command -v curl) || exit 0
+
+## The lists URIs and respective filenames.
+DROP_URI=http://www.spamhaus.org/drop/drop.txt
+DROP_FILENAME=$(basename $DROP_URI)
+EDROP_URI=http://www.spamhaus.org/drop/edrop.txt
+EDROP_FILENAME=$(basename $EDROP_URI)
+
+function print_usage() {
+    echo "Usage: $SCRIPTNAME <output file>"
+}
+
+## Get the drop list using cURL.
+## $1: the list URI.
+function get_drop_list() {
+    $CURL -s -O $1
+}
+
+## Get the expire date in UNIX epoch format.
+## $1: the list file.
+function get_list_expire_date() {
+    echo $(date --date="$(sed -n 's/^.*Expires:\(.*\)$/\1/p' $1)" '+%s')
+}
+
+## Get the list date.
+## $1: the list file.
+function get_list_date() {
+    echo $(date --date="$(sed -n 's/^.*Last-Modified:\(.*\)$/\1/p' $1)" '+%s')
+}
+
+## Format the list according to Nginx geo module format.
+## $1: the list file.
+function format_geo_ips() {
+    sed -e '/^;/d' -e 's/;/1; #/g' $1
+}
+
+## Get the list headers. Last-Modified and Expires date.
+## $1: the list file.
+function print_list_headers() {
+    sed -n 's/^; \(.*\)$/# \1/p' $1
+}
+
+## Process each list.
+## $1: output filename.
+## $2: list filename.
+## $3: list URI.
+function process_lists() {
+    get_drop_list $3
+    ## Write the DROP/EDROP list file for Nginx geo.
+    if [ "$4" = "append" ]; then
+        print_list_headers $2 >> $1
+    else
+        print_list_headers $2 > $1
+    fi
+    format_geo_ips $2 >> $1
+}
+
+## Echo the number of added lines to a particular file.
+## #1: drop list file.
+function print_added_lines() {
+    echo $(wc -l $1) | awk '{print "File " $2 " adding " $1 - 3 " networks"}'
+}
+
+## Check the number of arguments.
+if [ $# -ne 1 ]; then
+    print_usage
+    exit 1
+fi
+
+## If the file doesn't exist create it and process the lists.
+if [ ! -f $1 ]; then
+    process_lists $1 $DROP_FILENAME $DROP_URI
+    print_added_lines $DROP_FILENAME
+    process_lists $1 $EDROP_FILENAME $EDROP_URI "append"
+    print_added_lines $EDROP_FILENAME
+fi
+
+## Grab the drop files if the Expire date of the current list has
+## passed already.
+if [ "$(get_list_expire_date $DROP_FILENAME)" -lt "$(date '+%s')" ]; then
+    process_lists $1 $DROP_FILENAME $DROP_URI
+    print_added_lines $DROP_FILENAME
+
+fi
+
+## Ditto for the extended drop list.
+if [ "$(get_list_expire_date $EDROP_FILENAME)" -lt "$(date '+%s')" ]; then
+    process_lists $1 $EDROP_FILENAME $EDROP_URI "append"
+    print_added_lines $EDROP_FILENAME
+fi
