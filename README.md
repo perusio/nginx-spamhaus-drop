@@ -66,7 +66,7 @@ there. This way only a **privileged** user can update the list.
  Nginx
  [creates new workers](http://nginx.org/en/docs/control.html#reconfiguration)
  and opens new sockets while servicing the requests in progress. Hence
- **reloading** the configuration is an **expensive** and shouldn't be
+ **reloading** the configuration is **expensive** and shouldn't be
  taken lightly. 
  
  My suggestion is to do it automatically once a day by
